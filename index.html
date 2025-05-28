@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <title>Spherical Minecraft-like Game</title>
   <style>
-    body { margin: 0; overflow: hidden; }
+    body { margin: 0; overflow: hidden; background: #222;}
     canvas { display: block; }
     #inventory {
       position: fixed;
@@ -32,74 +32,70 @@
     .slot.selected {
       border-color: #ff0;
     }
+    #loading-bg {
+      position: fixed;
+      width: 100vw;
+      height: 100vh;
+      background: #111;
+      top: 0; left: 0;
+      z-index: 999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+    #loading-bar-wrap {
+      width: 60vw;
+      max-width: 400px;
+      background: #222;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 2px solid #555;
+      margin-top: 20px;
+    }
+    #loading-bar {
+      width: 0%;
+      height: 28px;
+      background: #4caf50;
+      transition: width 0.4s;
+    }
+    #loading-text {
+      color:#fff; font-size:18px; font-family:sans-serif;
+      text-align:center;
+    }
   </style>
 </head>
 <body>
+  <div id="loading-bg">
+    <div id="loading-text">Loading World...</div>
+    <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
+  </div>
   <div id="inventory"></div>
-  <script type="module">
-    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js";
-    import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.155.0/examples/jsm/controls/OrbitControls.js";
 
-    // --- Basic setup ---
+  <!-- Include Three.js and OrbitControls -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.155.0/examples/js/controls/OrbitControls.min.js"></script>
+  <script>
+    // --- Loader Bar ---
+    function setLoading(percent) {
+      document.getElementById("loading-bar").style.width = percent + "%";
+    }
+
+    // --- 3D Setup ---
     let scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87ceeb);
 
-    let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 7, 18);
+    let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
+    camera.position.set(0, 15, 40);
 
-    let renderer = new THREE.WebGLRenderer({antialias: true});
+    let renderer = new THREE.WebGLRenderer({antialias:true});
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // --- Light ---
     let light = new THREE.DirectionalLight(0xffffff, 1.1);
-    light.position.set(10, 20, 10);
+    light.position.set(40, 60, 40);
     scene.add(light);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-
-    // --- Floating island base ---
-    let islandGeometry = new THREE.SphereGeometry(10, 32, 32, 0, Math.PI * 2, 0, Math.PI * 0.6);
-    let islandMaterial = new THREE.MeshStandardMaterial({ color: 0x228833, flatShading: true });
-    let island = new THREE.Mesh(islandGeometry, islandMaterial);
-    island.position.y = 0;
-    scene.add(island);
-
-    // --- Spherical blocks ---
-    let blocks = [];
-    let blockGroup = new THREE.Group();
-    scene.add(blockGroup);
-
-    function spawnBlock(pos, type="dirt") {
-      let color = type === "dirt" ? 0x8B5A2B : 0x228B22;
-      let block = new THREE.Mesh(
-        new THREE.SphereGeometry(1, 18, 18),
-        new THREE.MeshStandardMaterial({ color, flatShading: true })
-      );
-      block.position.copy(pos);
-      block.userData = {type, cracks: 0, breakTimer: 0};
-      blockGroup.add(block);
-      blocks.push(block);
-      return block;
-    }
-
-    // --- Place blocks in a grid on top of island ---
-    for(let x=-3; x<=3; x++) for(let z=-3; z<=3; z++) {
-      let y = Math.sqrt(Math.max(0, 10*10 - x*x - z*z));
-      spawnBlock(new THREE.Vector3(x*2.1, y+1, z*2.1));
-    }
-    // Place a few tree blocks (leaves)
-    spawnBlock(new THREE.Vector3(0, 16, 0), "leaf");
-    spawnBlock(new THREE.Vector3(0, 18, 0), "leaf");
-
-    // --- Hand (player's arm) ---
-    let hand = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.4, 0.6, 3, 16),
-      new THREE.MeshStandardMaterial({ color: 0xA0522D, flatShading: true })
-    );
-    hand.position.set(1, -1, -2.5);
-    hand.rotation.x = -Math.PI/5;
-    camera.add(hand);
-    scene.add(camera);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.4));
 
     // --- Inventory UI ---
     const inventory = Array(9).fill(null);
@@ -117,164 +113,184 @@
     updateInventoryUI();
 
     // --- Controls ---
-    let controls = new OrbitControls(camera, renderer.domElement);
+    let controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enablePan = false;
     controls.enableDamping = true;
     controls.maxPolarAngle = Math.PI/2.1;
-    controls.target.set(0, 7, 0);
+    controls.target.set(0, 12, 0);
 
-    // --- Movement ---
-    let player = { position: new THREE.Vector3(0, 12, 0), velocity: new THREE.Vector3(), onGround: false };
-    function updateCamera() {
-      camera.position.x = player.position.x;
-      camera.position.y = player.position.y + 2;
-      camera.position.z = player.position.z + 10;
-      controls.target.copy(player.position);
-    }
-    // Keyboard
-    let move = {w:0, a:0, s:0, d:0, shift:0};
-    document.addEventListener('keydown', e => {
-      if (e.key === 'w') move.w = 1;
-      if (e.key === 'a') move.a = 1;
-      if (e.key === 's') move.s = 1;
-      if (e.key === 'd') move.d = 1;
-      if (e.key === 'Shift') move.shift = 1;
-      if (e.key >= '1' && e.key <= '9') {
-        selectedSlot = parseInt(e.key)-1;
-        updateInventoryUI();
-      }
-    });
-    document.addEventListener('keyup', e => {
-      if (e.key === 'w') move.w = 0;
-      if (e.key === 'a') move.a = 0;
-      if (e.key === 's') move.s = 0;
-      if (e.key === 'd') move.d = 0;
-      if (e.key === 'Shift') move.shift = 0;
-    });
+    // --- Blocks and World ---
+    let blocks = [];
+    let blockGroup = new THREE.Group();
+    scene.add(blockGroup);
 
-    // --- Block breaking mechanics ---
-    let breaking = null, breakStart = 0;
-    let mouseDown = false;
-    renderer.domElement.addEventListener('mousedown', (event) => {
-      mouseDown = true;
-    });
-    renderer.domElement.addEventListener('mouseup', (event) => {
-      mouseDown = false;
-      if (breaking) {
-        breaking.material.emissive.setHex(0x000000);
-        breaking.userData.cracks = 0;
-        breaking = null;
-      }
-    });
-
-    // --- Picking logic ---
-    let raycaster = new THREE.Raycaster();
-    function getBlockUnderCursor() {
-      let mouse = new THREE.Vector2(
-        (event.clientX / window.innerWidth) * 2 - 1,
-        -(event.clientY / window.innerHeight) * 2 + 1
+    function spawnBlock(pos, type="dirt") {
+      let color = type === "dirt" ? 0x8B5A2B : (type === "leaf" ? 0x228B22 : 0xcccccc);
+      let block = new THREE.Mesh(
+        new THREE.BoxGeometry(2,2,2),
+        new THREE.MeshStandardMaterial({ color, flatShading: true })
       );
-      raycaster.setFromCamera(mouse, camera);
-      let intersects = raycaster.intersectObjects(blockGroup.children);
-      return intersects.length ? intersects[0].object : null;
+      block.position.copy(pos);
+      block.userData = {type, cracks:0, breakTimer:0};
+      blockGroup.add(block);
+      blocks.push(block);
+      return block;
     }
 
-    // --- Spinning pickup ---
-    let pickups = [];
-    function spawnPickup(pos, type) {
-      let mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(0.5, 14, 14),
-        new THREE.MeshStandardMaterial({ color: type === "dirt" ? 0x8B5A2B : 0x228B22, flatShading: true })
-      );
-      mesh.position.copy(pos);
-      mesh.userData = {type, age: 0};
-      scene.add(mesh);
-      pickups.push(mesh);
-    }
-
-    // --- Main loop ---
-    let clock = new THREE.Clock();
-    function animate() {
-      requestAnimationFrame(animate);
-      let dt = clock.getDelta();
-
-      // Player movement
-      let dir = new THREE.Vector3(
-        move.d - move.a,
-        0,
-        move.s - move.w
-      );
-      if (dir.lengthSq() > 0) {
-        dir.normalize();
-        let speed = move.shift ? 8 : 4;
-        player.position.add(dir.multiplyScalar(speed * dt));
+    // --- Spherical "planet" of blocks ---
+    let planetRadius = 14;
+    let blocksToSpawn = [];
+    for(let y=-planetRadius+2; y<=planetRadius-2; y+=2) {
+      let sliceRadius = Math.sqrt(planetRadius*planetRadius - y*y);
+      for(let angle=0; angle<360; angle+=18) {
+        let rad = angle * Math.PI / 180;
+        let x = Math.round(Math.cos(rad) * sliceRadius / 2) * 2;
+        let z = Math.round(Math.sin(rad) * sliceRadius / 2) * 2;
+        // Only add surface blocks
+        if (Math.abs(Math.sqrt(x*x + y*y + z*z) - planetRadius) < 2.1)
+          blocksToSpawn.push({pos: new THREE.Vector3(x,y,z), type: "dirt"});
       }
+    }
+    // Add a tree on top
+    blocksToSpawn.push({pos: new THREE.Vector3(0,planetRadius+2,0), type:"leaf"});
+    blocksToSpawn.push({pos: new THREE.Vector3(0,planetRadius+4,0), type:"leaf"});
 
-      // Simulate gravity (for fun)
-      if (player.position.y > 12) {
-        player.position.y -= dt * 2;
+    // --- Loading the world with a progress bar ---
+    let loadingIndex = 0;
+    function loadNextBlock() {
+      if (loadingIndex < blocksToSpawn.length) {
+        spawnBlock(blocksToSpawn[loadingIndex].pos, blocksToSpawn[loadingIndex].type);
+        loadingIndex++;
+        setLoading(Math.round(loadingIndex / blocksToSpawn.length * 100));
+        setTimeout(loadNextBlock, 5); // adjust for speed
       } else {
-        player.position.y = 12;
+        // Remove loading screen
+        setTimeout(() => {
+          document.getElementById("loading-bg").style.display = "none";
+        }, 200);
+        startGame();
       }
-      updateCamera();
+    }
+    loadNextBlock();
 
-      // Block breaking logic
-      if (mouseDown) {
-        // Raycast from center of screen
-        raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
-        let intersects = raycaster.intersectObjects(blockGroup.children);
-        if (intersects.length) {
-          let block = intersects[0].object;
-          if (breaking !== block) {
-            breaking = block;
-            block.userData.cracks = 0;
-            breakStart = performance.now();
-          }
-          // Show cracks as block gets broken
-          let timeBreaking = (performance.now() - breakStart) / 1000;
-          block.userData.cracks = timeBreaking;
-          block.material.emissive.setRGB(timeBreaking/2,0,0);
-          if (timeBreaking > 1.2) {
-            // Break block
-            spawnPickup(block.position, block.userData.type);
-            blockGroup.remove(block);
-            blocks.splice(blocks.indexOf(block), 1);
-            breaking = null;
+    // --- Main Game Logic ---
+    function startGame() {
+      // --- Hand (player's arm) ---
+      let hand = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.4, 0.6, 3, 16),
+        new THREE.MeshStandardMaterial({ color: 0xA0522D, flatShading: true })
+      );
+      hand.position.set(1, -1, -2.5);
+      hand.rotation.x = -Math.PI/5;
+      camera.add(hand);
+      scene.add(camera);
+
+      // --- Player Movement (optional: disable for now, use orbit controls) ---
+      // Could implement WASD logic here if you want player-controlled movement
+
+      // --- Keyboard ---
+      document.addEventListener('keydown', e => {
+        if (e.key >= '1' && e.key <= '9') {
+          selectedSlot = parseInt(e.key)-1;
+          updateInventoryUI();
+        }
+      });
+
+      // --- Block breaking mechanics ---
+      let breaking = null, breakStart = 0;
+      let mouseDown = false;
+      renderer.domElement.addEventListener('mousedown', (event) => {
+        mouseDown = true;
+      });
+      renderer.domElement.addEventListener('mouseup', (event) => {
+        mouseDown = false;
+        if (breaking) {
+          breaking.material.emissive = new THREE.Color(0x000000);
+          breaking.userData.cracks = 0;
+          breaking = null;
+        }
+      });
+
+      // --- Picking logic ---
+      let raycaster = new THREE.Raycaster();
+
+      // --- Spinning pickup ---
+      let pickups = [];
+      function spawnPickup(pos, type) {
+        let mesh = new THREE.Mesh(
+          new THREE.SphereGeometry(0.6, 14, 14),
+          new THREE.MeshStandardMaterial({ color: type === "dirt" ? 0x8B5A2B : 0x228B22, flatShading: true })
+        );
+        mesh.position.copy(pos);
+        mesh.userData = {type, age: 0};
+        scene.add(mesh);
+        pickups.push(mesh);
+      }
+
+      // --- Main loop ---
+      let clock = new THREE.Clock();
+      function animate() {
+        requestAnimationFrame(animate);
+        let dt = clock.getDelta();
+
+        // Block breaking logic
+        if (mouseDown) {
+          // Raycast from center of screen
+          raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
+          let intersects = raycaster.intersectObjects(blockGroup.children);
+          if (intersects.length) {
+            let block = intersects[0].object;
+            if (breaking !== block) {
+              breaking = block;
+              block.userData.cracks = 0;
+              breakStart = performance.now();
+            }
+            // Show cracks as block gets broken
+            let timeBreaking = (performance.now() - breakStart) / 1000;
+            block.userData.cracks = timeBreaking;
+            block.material.emissive = new THREE.Color(timeBreaking/2,0,0);
+            if (timeBreaking > 1.0) {
+              // Break block
+              spawnPickup(block.position, block.userData.type);
+              blockGroup.remove(block);
+              blocks.splice(blocks.indexOf(block), 1);
+              breaking = null;
+            }
           }
         }
-      }
 
-      // Animate hand
-      if (mouseDown && breaking) {
-        hand.position.y = -1 + Math.sin(performance.now()/100)*0.2;
-      } else {
-        hand.position.y = -1;
-      }
-
-      // Animate pickups, check for inventory pickup
-      for (let i = pickups.length-1; i >= 0; --i) {
-        let p = pickups[i];
-        p.rotation.y += dt * 6;
-        p.userData.age += dt;
-        // Pick up if close to player
-        if (p.position.distanceTo(player.position) < 2) {
-          // Add to first free inventory slot
-          let slot = inventory.findIndex(i => i === null);
-          if (slot !== -1) {
-            inventory[slot] = p.userData.type;
-            updateInventoryUI();
-            scene.remove(p);
-            pickups.splice(i,1);
-          }
+        // Animate hand
+        if (mouseDown && breaking) {
+          hand.position.y = -1 + Math.sin(performance.now()/100)*0.2;
+        } else {
+          hand.position.y = -1;
         }
-        // Animate floating
-        p.position.y += Math.sin(p.userData.age*5)*0.01;
-      }
 
-      controls.update();
-      renderer.render(scene, camera);
+        // Animate pickups, check for inventory pickup
+        for (let i = pickups.length-1; i >= 0; --i) {
+          let p = pickups[i];
+          p.rotation.y += dt * 6;
+          p.userData.age += dt;
+          // Pick up if close to camera
+          if (p.position.distanceTo(camera.position) < 3) {
+            // Add to first free inventory slot
+            let slot = inventory.findIndex(i => i === null);
+            if (slot !== -1) {
+              inventory[slot] = p.userData.type;
+              updateInventoryUI();
+              scene.remove(p);
+              pickups.splice(i,1);
+            }
+          }
+          // Animate floating
+          p.position.y += Math.sin(p.userData.age*5)*0.01;
+        }
+
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate();
     }
-    animate();
 
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth/window.innerHeight;
